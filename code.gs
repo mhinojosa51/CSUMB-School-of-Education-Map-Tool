@@ -9,7 +9,7 @@ function doGet() {
 
 function getLatLangData() {
     /* pulls location data from the Google Spreadsheet listed below and returns the data to our front-end javascript */
-    var sheet = SpreadsheetApp.openById('1aEXAuakPZQ4dVJpE0e3oieI4lBhktWiFgKOWAHB_TfU');
+    var sheet = SpreadsheetApp.openById('Google Sheet ID');
 
     var locations = [];
 
