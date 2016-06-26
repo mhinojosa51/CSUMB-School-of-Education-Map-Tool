@@ -1,0 +1,506 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta name='description' content='Google Map tool for the School of Education at California State University, Monterey Bay for mapping distances and travel times from our campus to our partner schools'>
+    <meta name='author' content='Michael Hinojosa'>
+    <base target="_top">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+        }
+
+        html, body {
+            height: 100%;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+        }
+
+        #main {
+            height: 100%;
+            width: 100%;
+            position: fixed;
+        }
+
+        #heading {
+            text-align: center;
+            font-size: 35px;
+            color: #446a59;
+        }
+
+        #map-container {
+            width: 100%;
+            height: 700px;
+            margin-top: 20px;
+            display: block;
+            background-color: #3367d6;
+        }
+
+        #map {
+            height: 650px;
+            width: 45%;
+            float: left;
+            margin-top: 20px;
+            margin-left: 50px;
+        }
+
+        #navigation {
+            width: 45%;
+            height: 650px;
+            float: left;
+            background-color: white;
+            margin-top: 20px;
+            margin-left: 0px;
+        }
+
+        #navigation-choices {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow-y: scroll;
+        }
+
+            #navigation-choices section {
+                width: 80%;
+                margin-left: 10px;
+                margin-top: 10px;
+            }
+
+                #navigation-choices section h2 {
+                    color: #446a59;
+                }
+
+        #travel-times {
+            margin-top: 20px;
+        }
+
+        #circle-output {
+            margin: 10px;
+            margin-bottom: 15px;
+        }
+
+        #district-circle p {
+            margin: 0;
+            padding: 0;
+            margin-left: 35px;
+        }
+
+        #district-title {
+            display: none;
+        }
+
+        #message-output {
+            margin-top: 10px;
+        }
+
+        .Chevron {
+            margin-top: 10px;
+            position: relative;
+            display: none;
+            height: 20px;
+            width: 20px; 
+            margin-bottom: -20px;
+        }
+
+            .Chevron:before, .Chevron:after {
+                position: absolute;
+                display: block;
+                content: "";
+                border: 15px solid transparent; 
+            }
+            
+            .Chevron:before {
+                top: 0;
+                border-top-color: #446a59; 
+            }
+
+            .Chevron:after {
+                top: -10px; 
+                border-top-color: #fff; 
+            }
+
+        button {
+            width: 120px;
+            height: 25px;
+            background-color: #3367d6;
+            border: 1px solid #ffffff;
+            color: #ffffff;
+            cursor: pointer;
+        }
+
+            button:hover {
+                background-color: red;
+            }
+    </style>
+
+</head>
+<body>
+    <div id='main'>
+        <h2 id='heading'>CSUMB School of Education District Map Tool</h2>
+        <div id='map-container'>
+            <div id='map'></div>
+            <div id='navigation'>
+                <div id='navigation-choices'>
+                    <section>
+                        <h2>Draw Circles on Map</h2>
+                        <label>Desired radius around CSUMB in miles. <input type='number' id='circle-radius' /></label>
+                        <button id='circle-button' type='button'>Draw Circle</button>
+                        <div id='circle-output'>
+                            <h4 id='district-title'></h4>
+                            <i class='Chevron'></i>
+                            <div id='district-circle'></div>
+                        </div>
+                    </section>
+                    <section id='travel-times'>
+                        <h2>District Travel Times</h2>
+                        <h4>Select a district to get an estimated travel time from CSUMB.</h4>
+                        <select id='district-names'>
+                            <option>School Districts</option>
+                        </select>
+                        <h4 id='message-output'></h4>
+                    </section>
+                    <section>
+                        <button id='clear-circles' type='button'>Clear Circles</button>
+                        <button id='show-markers' type='button'>Show All Markers</button>
+                        <button id='clear-lines' type='buttion'>Clear Lines</button>
+                    </section>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyD60-mdOOYOiFlnLbi4y3SMn1-kuKVFa8U&libraries=geometry"></script>
+    <script src="https://code.jquery.com/jquery-1.12.0.min.js"></script>
+    <script>
+
+      // arrays to hold district names and their associated LatLng Objects, associated by index
+      var districtNames = [];
+      var districtLocations = [];
+
+      // create the variable to hold our DistrictMap class
+      var MainMap;
+
+
+      // DistictMap class to contain the functionality of our UI
+      var DistrictMap = function(){
+
+         // set origin of our pages Google Map
+         this.origin = new google.maps.LatLng({lat: 36.6533447, lng: -121.7981367});
+
+         // arrays for needed district variables
+         this.districtNames = [];
+         this.districtLatLngObjects = [];
+         this.travelTimes = [];
+         this.travelDistances = [];
+
+         // create Google Map and append it to the '#map' div
+         this.map = new google.maps.Map(document.getElementById('map'), {
+          center: this.origin,
+          zoom: 9
+
+        });
+
+        // place marker for the center of our Google Map
+         this.csumbMarker = new google.maps.Marker({
+             position: this.origin,
+             title: "CSUMB",
+             map: this.map,
+             label: "C"
+         });
+
+         this.mapMarkers = [];
+         this.mapCircle;
+
+         // initialize a current path
+         this.currentPath = new google.maps.Polyline({
+            path: [this.origin,this.origin],
+            geodesic: true,
+            strokeColor: '#FF0000',
+            strokeWeight: 2
+            });
+
+         this.hammingDistances = [];
+
+         // create a Google Map Distance Matrix Service to calculate travel times from CSUMB to our partner districts main office.
+         this.distanceService = new google.maps.DistanceMatrixService();
+
+         // create class variables to hold jQuery objects for our UI controls
+         this.districtDropdown = $('#district-names');
+         this.circleButton = $("#circle-button");
+         this.circleRadius = $('#circle-radius');
+         this.circleOutput = $("#district-circle");
+         this.circleContainer = $("#circle-output");
+         this.travelTimeOutput = $("#message-output");
+         this.clearCircles = $("#clear-circles");
+         this.clearLinesButton = $("#clear-lines");
+         this.showMarkers = $("#show-markers");
+         this.dropdown = true;
+         this.districtTitle = $('#district-title');
+         this.chevron = $('.Chevron');
+
+         // initialize a class variable to hold and update created Google Map Circles
+         this.mapCircle = new google.maps.Circle({
+              strokeColor: '#446a59',
+              strokeOpacity: 0.8,
+              strokeWeight: 1,
+              fillColor: '#446a59',
+              fillOpacity: 0.15,
+              map: null,
+              center: this.origin,
+              radius: 0
+           });;
+
+         // map click functions to UI buttons and bind our District Map class instance using bind() method to access class variables.
+         this.circleButton.click(this.createMapCircle.bind(this));
+         this.districtDropdown.change(this.getTravelTimes.bind(this));
+         this.showMarkers.click(this.showAllMapMarkers.bind(this));
+         this.clearCircles.click(this.clearMapCircles.bind(this));
+         this.clearLinesButton.click(this.clearLine.bind(this));
+
+         // function to control how the arrow icon looks on the page when clicked by a user
+         this.chevron.click(function(){
+             if(this.dropdown == true){
+                $('#district-circle').slideUp();
+                this.dropdown = false;
+             } else if(this.dropdown == false){
+                $('#district-circle').slideDown();
+                this.dropdown = true;
+             }
+           }.bind(this));
+
+
+      }
+
+      // class function to setup needed class variables, create map markers of partner districts and calculate travel times.
+      DistrictMap.prototype.setup = function(){
+         this.setData(districtNames,districtLocations);
+         this.createMarkers();
+         this.getDistrictDistances();
+         this.getHammingDistances();
+         this.fillDistrictNames();
+      }
+
+      // class function to draw a line from the center CSUMB marker to a user selected partner district.
+      DistrictMap.prototype.drawLine = function(locations){
+         this.currentPath.setMap(null);
+         this.currentPath = new google.maps.Polyline({
+            path: locations,
+            geodesic: true,
+            strokeColor: '#446A59',
+            strokeWeight: 2
+            });
+
+            this.currentPath.setMap(this.map);
+      }
+
+      // class function to clear map line on user click.
+      DistrictMap.prototype.clearLine = function(){
+         this.currentPath.setMap(null);
+         this.travelTimeOutput.slideUp();
+      }
+
+      // class function to set district names and their associated LatLng objects.
+      DistrictMap.prototype.setData = function(names,locs){
+
+         this.districtNames = names;
+         this.districtLatLngObjects = locs;
+      }
+
+      // class function to create map markers for partner district office locations.
+      DistrictMap.prototype.createMarkers = function(){
+
+         for(var i =0; i < this.districtLatLngObjects.length; i++){
+
+            var marker = new google.maps.Marker({
+               position: this.districtLatLngObjects[i],
+               title: this.districtNames[i],
+               map: this.map
+            });
+
+            this.mapMarkers.push(marker);
+         }
+      }
+
+      // class function to calculate distances from CSUMB to partner school district offices.
+      DistrictMap.prototype.getDistrictDistances = function(){
+         var left = this.districtLatLngObjects.slice(0,this.districtLatLngObjects.length / 2);
+         var right = this.districtLatLngObjects.slice(this.districtLatLngObjects.length / 2);
+         var container = [left,right];
+
+         var func = this.parseDistanceMatrixResults;
+         var mapClass = this;
+
+         for(var i = 0; i < container.length; i++){
+            this.distanceService.getDistanceMatrix({
+               origins: ["Cal State University Monterey Bay"],
+               destinations: container[i],
+               travelMode: google.maps.TravelMode.DRIVING
+            }, function(response,status){func(response,status,mapClass)});
+         }
+      }
+
+      // class function to append calculated travel times and distances to class object variables.
+      DistrictMap.prototype.parseDistanceMatrixResults = function(response,status,mapClass){
+
+         if(status == google.maps.DistanceMatrixStatus.OK){
+            var results = response.rows[0].elements;
+            for(var i = 0; i < results.length; i++){
+               var distance = results[i].distance.value;
+               var time = results[i].duration.text;
+               mapClass.travelDistances.push(distance);
+               mapClass.travelTimes.push(time);
+            }
+
+         }
+
+      }
+
+      // class function to calculate direct distances from CSUMB to partner school district offices
+      DistrictMap.prototype.getHammingDistances = function(){
+         for(var i =0; i < this.districtLatLngObjects.length; i++){
+            var hamming = google.maps.geometry.spherical.computeDistanceBetween(this.origin,this.districtLatLngObjects[i]);
+            this.hammingDistances.push(hamming);
+         }
+      }
+
+      // class function that fills UI dropdown menu with the names of partner school district name.
+      DistrictMap.prototype.fillDistrictNames = function(){
+         for(var i = 0; i < this.districtNames.length; i++){
+            var option = document.createElement('option');
+            option.text = this.districtNames[i];
+            this.districtDropdown.append(option);
+         }
+      }
+      // class function to convert from miles to meters.
+      DistrictMap.prototype.milesToMeters = function(miles){
+         return 1609.34 * miles;
+      }
+
+      // class function to convert meters to miles.
+      DistrictMap.prototype.metersToMiles = function(meters){
+         return meters / 1609.34;
+      }
+
+      // class function that grabs a user selected district and updates the UI with the requested information, sets all active markers blank and reveals choosen marker.
+      DistrictMap.prototype.getTravelTimes = function(){
+         var name = this.districtDropdown.val();
+         var index = this.districtNames.indexOf(name);
+         var time = this.travelTimes[index];
+
+         for(var i = 0; i < this.mapMarkers.length; i++){
+
+            this.mapMarkers[i].setOpacity(0);
+            if(i == index){
+              this.mapMarkers[index].setOpacity(1);
+            }
+         }
+         this.mapCircle.setMap(null);
+
+         if(name != "School Districts"){
+
+            var message = "Travel time to " + name + " is approximately " + time + ". This time is based on optimal travel conditions.";
+            this.travelTimeOutput.text(message);
+            this.travelTimeOutput.slideDown();
+            this.drawLine([this.origin, this.districtLatLngObjects[index]]);
+         }
+      }
+
+      // class function that creates a circle on the map with a user inputed radius in miles. Calls displayDistrictsWithinCircleRadius() to show districts in the circles radius. Calls clearLines() to clear any lines on the map.
+      DistrictMap.prototype.createMapCircle = function(){
+          this.circleOutput.empty();
+
+          var num = Number(this.circleRadius.val());
+          var miles = this.milesToMeters(num);
+
+
+          this.circleContainer.slideDown();
+          this.districtTitle.text("Districts within a " + num + " mile radius of CSUMB. This value does not reflect driving distance which is likely longer.");
+          this.districtTitle.css('display', 'block');
+          this.chevron.css('display', 'block');
+
+          if(num != 0){
+            try {
+             this.mapCircle.setMap(null);
+            } finally {
+             this.mapCircle = new google.maps.Circle({
+              strokeColor: '#446a59',
+              strokeOpacity: 0.8,
+              strokeWeight: 1,
+              fillColor: '#446a59',
+              fillOpacity: 0.15,
+              map: this.map,
+              center: this.origin,
+              radius: miles
+           });
+
+           }
+              this.displayDistrictsWithinCirclesRadius();
+              this.clearLine();
+          }
+
+
+      }
+
+      // class function to display map markers within a user defined radius.
+      DistrictMap.prototype.displayDistrictsWithinCirclesRadius = function(){
+
+          var radius = this.mapCircle.getRadius();
+
+          for(var i =0; i < this.hammingDistances.length; i++){
+              if(this.hammingDistances[i] > radius){
+                 this.mapMarkers[i].setOpacity(0);
+              } else {
+                 var name = this.districtNames[i];
+                 var district = document.createElement('p');
+                 district.innerHTML = name;
+                 this.circleOutput.append(district);
+                 this.mapMarkers[i].setOpacity(1);
+              }
+          }
+
+
+
+      }
+
+      // class function to display all district map markers.
+      DistrictMap.prototype.showAllMapMarkers = function(){
+         for(var i = 0; i < this.mapMarkers.length; i++){
+            this.mapMarkers[i].setOpacity(1);
+         }
+      }
+
+      // class function to clear circles from the map.
+      DistrictMap.prototype.clearMapCircles = function(){
+         this.mapCircle.setMap(null);
+         this.circleContainer.slideUp();
+
+      }
+
+
+      // grabs data from backend function to place into District Map class. Creates an instance of the DistrictMap class and runs its setup function.
+      function getData(locations){
+
+         for(var i = 0; i < locations.length; i++){
+            var name = locations[i][0];
+            var districtLatLng = new google.maps.LatLng(locations[i][1]);
+
+            districtNames.push(name);
+            districtLocations.push(districtLatLng);
+
+         }
+         MainMap = new DistrictMap();
+         MainMap.setup();
+      }
+
+      // gets the whole process rolling by using google script to call backend function to grab location and name data.
+      function setup(){
+         google.script.run.withSuccessHandler(getData).getLatLangData();
+      }
+
+
+      setup();
+
+    </script>
+</body>
+</html>
