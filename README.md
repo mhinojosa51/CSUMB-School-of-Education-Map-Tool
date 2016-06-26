@@ -1,4 +1,4 @@
-# CSUMB-School-of-Education-Map-Tool
+# CSUMB School of Education Map Tool
 A map tool I made for the School of Education at CSUMB.
 I was asked by our departments database administrator to 
 create a tool for our students, staff and faculty to determine
